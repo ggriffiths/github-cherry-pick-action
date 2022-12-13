@@ -8,7 +8,7 @@ export interface Inputs {
   token: string
   committer: string
   author: string
-  branch: string
+  branchRegex: string
   labels: string[]
   assignees: string[]
   reviewers: string[]
@@ -17,7 +17,8 @@ export interface Inputs {
 
 export async function createPullRequest(
   inputs: Inputs,
-  prBranch: string
+  prBranch: string,
+  baseBranch: string
 ): Promise<void> {
   const octokit = github.getOctokit(inputs.token)
   if (process.env.GITHUB_REPOSITORY !== undefined) {
@@ -42,7 +43,7 @@ export async function createPullRequest(
       owner,
       repo,
       head: prBranch,
-      base: inputs.branch,
+      base: baseBranch,
       title,
       body
     })
@@ -56,7 +57,7 @@ export async function createPullRequest(
 
       if (prLabels) {
         for (const item of prLabels) {
-          if (item.name !== inputs.branch) {
+          if (item.name !== baseBranch) {
             inputs.labels.push(item.name)
           }
         }

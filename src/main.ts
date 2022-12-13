@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import * as io from '@actions/io'
 import * as exec from '@actions/exec'
+import * as github from '@actions/github'
 import * as utils from './utils'
 import {Inputs, createPullRequest} from './github-helper'
 
@@ -13,8 +14,8 @@ export async function run(): Promise<void> {
       token: core.getInput('token'),
       committer: core.getInput('committer'),
       author: core.getInput('author'),
-      branch: core.getInput('branch'),
       labels: utils.getInputAsArray('labels'),
+      branchRegex: core.getInput('branchRegex'),
       assignees: utils.getInputAsArray('assignees'),
       reviewers: utils.getInputAsArray('reviewers'),
       teamReviewers: utils.getInputAsArray('teamReviewers')
@@ -47,34 +48,44 @@ export async function run(): Promise<void> {
     await gitExecution(['fetch', '--all'])
     core.endGroup()
 
-    // Create branch new branch
-    core.startGroup(`Create new branch from ${inputs.branch}`)
-    await gitExecution(['checkout', '-b', prBranch, `origin/${inputs.branch}`])
-    core.endGroup()
+  
+    var re = new RegExp(inputs.branchRegex);
+    for (var label of github.context.payload.pull_request.labels) {
+      if (re.test(label.name)) {
+        var baseBranch = label.name.replaceAll('cherry-pick/', '')
 
-    // Cherry pick
-    core.startGroup('Cherry picking')
-    const result = await gitExecution([
-      'cherry-pick',
-      '-m',
-      '1',
-      '--strategy=recursive',
-      `${githubSha}`
-    ])
-    if (result.exitCode !== 0 && !result.stderr.includes(CHERRYPICK_EMPTY)) {
-      throw new Error(`Unexpected error: ${result.stderr}`)
+        // Create branch new branch
+        core.startGroup(`Create new branch from ${baseBranch}`)
+        await gitExecution(['checkout', '-b', prBranch, `origin/${baseBranch}`])
+        core.endGroup()
+
+        // Cherry pick
+        core.startGroup('Cherry picking')
+        const result = await gitExecution([
+          'cherry-pick',
+          '-m',
+          '1',
+          '--strategy=recursive',
+          `${githubSha}`
+        ])
+        if (result.exitCode !== 0 && !result.stderr.includes(CHERRYPICK_EMPTY)) {
+          throw new Error(`Unexpected error: ${result.stderr}`)
+        }
+        core.endGroup()
+
+        // Push new branch
+        core.startGroup('Push new branch to remote')
+        await gitExecution(['push', '-u', 'origin', `${prBranch}`])
+        core.endGroup()
+
+        // Create pull request
+        core.startGroup('Opening pull request')
+        await createPullRequest(inputs, prBranch, baseBranch)
+        core.endGroup()
+      } 
     }
-    core.endGroup()
 
-    // Push new branch
-    core.startGroup('Push new branch to remote')
-    await gitExecution(['push', '-u', 'origin', `${prBranch}`])
-    core.endGroup()
 
-    // Create pull request
-    core.startGroup('Opening pull request')
-    await createPullRequest(inputs, prBranch)
-    core.endGroup()
   } catch (error) {
     core.setFailed(error.message)
   }
