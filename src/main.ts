@@ -53,6 +53,9 @@ export async function run(): Promise<void> {
     for (var label of github.context.payload.pull_request.labels) {
       if (re.test(label.name)) {
         var baseBranch = label.name.replaceAll('cherry-pick/', '')
+        core.info(`Base branch: ${baseBranch}`)
+        core.info(`Label name: ${labe.name}`)
+        
 
         // Create branch new branch
         core.startGroup(`Create new branch from ${baseBranch}`)
